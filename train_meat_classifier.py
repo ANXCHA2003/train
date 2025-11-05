@@ -246,14 +246,6 @@ predictions = Dense(num_classes, activation='softmax')(x)
 # รวมโมเดลเก่ากับชั้นใหม่เข้าด้วยกัน
 model = Model(inputs=base_model.input, outputs=predictions)
 
-# --- บันทึก Class Indices ---
-class_indices = train_generator.class_indices
-labels = {v: k for k, v in class_indices.items()}
-class_labels_path = os.path.join(RUN_OUTPUT_DIR, 'class_labels.json')
-with open(class_labels_path, 'w') as f:
-    json.dump(labels, f)
-print(f"บันทึก Class Labels เรียบร้อยแล้ว: {labels}")
-
 # --- 4. คอมไพล์และฝึกสอนโมเดล ---
 model.compile(optimizer=Adam(learning_rate=1e-3), loss='categorical_crossentropy', metrics=['accuracy'])
 
