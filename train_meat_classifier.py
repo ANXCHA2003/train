@@ -32,11 +32,12 @@ print(f"ผลลัพธ์ของการฝึกสอนครั้ง
 # rescale=1./255 คือการปรับค่าสีของภาพจาก 0-255 ให้อยู่ในช่วง 0-1 (Normalization)
 train_datagen = ImageDataGenerator(
     rescale=1./255,
-    rotation_range=20, # เพิ่มความหลากหลายของข้อมูลโดยการหมุนภาพ
+    rotation_range=25, # เพิ่มความหลากหลายของข้อมูลโดยการหมุนภาพ
     width_shift_range=0.2,
     height_shift_range=0.2,
+    brightness_range=[0.7, 1.3],
     shear_range=0.2,
-    zoom_range=0.2,
+    zoom_range=0.3,
     horizontal_flip=True,
     fill_mode='nearest'
 )
