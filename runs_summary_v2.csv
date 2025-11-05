@@ -1,2 +1,0 @@
-run_id,timestamp,model,best_val_accuracy,val_loss_at_best_acc,total_epochs,fine_tune_start
-2025-11-05_15-10-04,2025-11-05 15:44:15,EfficientNetB0_v2,0.3100,6.4276,75,28
