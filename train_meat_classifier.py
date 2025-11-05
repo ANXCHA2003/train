@@ -4,7 +4,7 @@ from tensorflow.keras.applications import MobileNetV2 # type: ignore
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout # type: ignore
 from tensorflow.keras.models import Model # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping # type: ignore
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau # type: ignore
 import matplotlib.pyplot as plt
 import json
 import os
@@ -97,13 +97,14 @@ best_model_path = os.path.join(RUN_OUTPUT_DIR, 'best_model.h5')
 # สร้าง Callbacks
 early_stopping = EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min')
 model_checkpoint = ModelCheckpoint(best_model_path, monitor='val_accuracy', save_best_only=True, verbose=1, mode='max')
+lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, verbose=1, min_lr=1e-6)
 
 # เริ่มการฝึกสอน
 history = model.fit(
     train_generator,
     epochs=INITIAL_EPOCHS,
     validation_data=validation_generator,
-    callbacks=[early_stopping, model_checkpoint]
+    callbacks=[early_stopping, model_checkpoint, lr_scheduler]
 )
 
 # --- 5. Fine-Tuning ---
@@ -137,7 +138,7 @@ history_fine = model.fit(
     epochs=total_epochs,
     initial_epoch=history.epoch[-1] + 1, # เริ่มต้นฝึกต่อจากรอบที่แล้ว
     validation_data=validation_generator,
-    callbacks=[early_stopping, model_checkpoint] # ใช้ Callbacks เดิม
+    callbacks=[early_stopping, model_checkpoint, lr_scheduler] # ใช้ Callbacks เดิม
 )
 
 # --- 6. ประเมินผลและแสดงกราฟ ---
