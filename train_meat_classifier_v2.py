@@ -1,10 +1,10 @@
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.applications import EfficientNetV2B0  # ใช้ V2 ที่ดีกว่า
+from tensorflow.keras.applications import EfficientNetB0  # ใช้ EfficientNetB0 แทน V2
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout, BatchNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import AdamW  # ใช้ AdamW ที่ดีกว่า Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, CosineAnnealingScheduler
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.regularizers import l2
@@ -110,8 +110,8 @@ def load_and_preprocess_images(paths, labels, image_size, num_classes):
             # ใช้รูปภาพสีดำแทน
             images_np[i] = np.zeros((*image_size, 3))
     
-    # Normalize to [-1, 1] for EfficientNetV2
-    images_np = (images_np / 127.5) - 1.0
+    # Normalize to [0, 1] for EfficientNetB0
+    images_np = images_np / 255.0
     
     # Convert labels to one-hot encoding
     labels_np = to_categorical(labels_np, num_classes=num_classes)
@@ -142,8 +142,8 @@ validation_data = (x_val, y_val)
 # --- 4. สร้างโมเดลที่ทันสมัย ---
 print("\n--- สร้างโมเดล ---")
 
-# ใช้ EfficientNetV2B0 ที่ดีกว่า
-base_model = EfficientNetV2B0(
+# ใช้ EfficientNetB0 (V2 อาจไม่รองรับในเวอร์ชันนี้)
+base_model = EfficientNetB0(
     weights='imagenet', 
     include_top=False, 
     input_shape=(*IMAGE_SIZE, 3)
@@ -172,7 +172,7 @@ print("\n--- Phase 1: Feature Extraction ---")
 model.compile(
     optimizer=AdamW(learning_rate=1e-3, weight_decay=1e-4),
     loss='categorical_crossentropy',
-    metrics=['accuracy', 'top_2_accuracy']
+    metrics=['accuracy']
 )
 
 # Callbacks ที่ทันสมัย
@@ -226,7 +226,7 @@ for layer in base_model.layers[:-30]:  # แช่แข็ง layer แรก 3
 model.compile(
     optimizer=AdamW(learning_rate=1e-5, weight_decay=1e-4),
     loss='categorical_crossentropy',
-    metrics=['accuracy', 'top_2_accuracy']
+    metrics=['accuracy']
 )
 
 # Fine-tuning
@@ -253,7 +253,7 @@ def plot_history_v2(history1, history2, output_dir):
     fine_tune_start = len(history1.history['accuracy'])
     
     plt.figure(figsize=(16, 6))
-    plt.suptitle('Training History - EfficientNetV2B0 with Fine-tuning', fontsize=16)
+    plt.suptitle('Training History - EfficientNetB0 v2 with Fine-tuning', fontsize=16)
     
     # Accuracy
     plt.subplot(1, 2, 1)
@@ -292,7 +292,7 @@ def log_run_summary_v2(run_dir, history1, history2, summary_file):
     summary_data = {
         'run_id': os.path.basename(run_dir),
         'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'model': 'EfficientNetV2B0',
+        'model': 'EfficientNetB0_v2',
         'best_val_accuracy': f"{best_val_acc:.4f}",
         'val_loss_at_best_acc': f"{corresponding_val_loss:.4f}",
         'total_epochs': len(all_val_acc),
