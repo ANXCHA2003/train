@@ -1,0 +1,2 @@
+run_id,timestamp,best_val_accuracy,val_loss_at_best_acc
+2025-11-05_10-03-38,2025-11-05 10:09:08,0.3605,0.8821
