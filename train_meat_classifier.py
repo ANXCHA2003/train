@@ -20,7 +20,7 @@ import csv
 
 IMAGE_SIZE = (224, 224)
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8  # ลดลงเพื่อให้เหมาะกับข้อมูลน้อย
 
 TEST_SPLIT = 0.2 # แบ่งข้อมูลสำหรับ Validation 20%
 
@@ -30,9 +30,9 @@ RANDOM_STATE = 42 # ทำให้การแบ่งข้อมูลเห
 
 DATA_DIR = 'meat database'
 
-INITIAL_EPOCHS = 10
+INITIAL_EPOCHS = 30  # เพิ่มขึ้นเพราะไม่ทำ fine-tuning
 
-FINE_TUNE_EPOCHS = 20
+FINE_TUNE_EPOCHS = 0  # ปิด fine-tuning เพราะข้อมูลน้อยเกินไป
 
 SUMMARY_FILE = 'runs_summary.csv'
 
@@ -193,20 +193,22 @@ print("--- การเตรียมข้อมูลเสร็จสิ้
 
 
 # 2.4 สร้าง Data Generator สำหรับ Augmentation (เฉพาะข้อมูล Train)
-
+# เพิ่ม augmentation มากขึ้นเพื่อชดเชยข้อมูลที่น้อย
 train_datagen = ImageDataGenerator(
 
-    rotation_range=20,
+    rotation_range=30,  # เพิ่มจาก 20
 
-    width_shift_range=0.2,
+    width_shift_range=0.3,  # เพิ่มจาก 0.2
 
-    height_shift_range=0.2,
+    height_shift_range=0.3,  # เพิ่มจาก 0.2
 
     shear_range=0.2,
 
-    zoom_range=0.2,
+    zoom_range=0.3,  # เพิ่มจาก 0.2
 
     horizontal_flip=True,
+    vertical_flip=True,  # เพิ่มการพลิกแนวตั้ง
+    brightness_range=[0.8, 1.2],  # เพิ่มการปรับความสว่าง
 
     fill_mode='nearest'
 
@@ -234,11 +236,12 @@ base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(
 # "แช่แข็ง" โมเดลพื้นฐาน ไม่ให้มันเรียนรู้ใหม่ทั้งหมด
 base_model.trainable = False
 
-# สร้างชั้นบนสุดขึ้นมาใหม่
+# สร้างชั้นบนสุดขึ้นมาใหม่ - ทำให้เรียบง่ายเพื่อลด overfitting
 x = base_model.output
 x = GlobalAveragePooling2D()(x) # ลดขนาดข้อมูล
-x = Dense(128, activation='relu')(x)
-x = Dropout(0.5)(x) # เพิ่ม Dropout เพื่อช่วยลด Overfitting
+x = Dropout(0.5)(x) # เพิ่ม Dropout ก่อน Dense layer
+x = Dense(64, activation='relu')(x)  # ลดจาก 128 เป็น 64
+x = Dropout(0.5)(x) # เพิ่ม Dropout อีกชั้น
 # ชั้นสุดท้ายมี num_classes neuron (จำนวนคลาส) และใช้ softmax activation
 # เพื่อให้ผลลัพธ์เป็นความน่าจะเป็นของแต่ละคลาส
 predictions = Dense(num_classes, activation='softmax')(x)
@@ -247,15 +250,16 @@ predictions = Dense(num_classes, activation='softmax')(x)
 model = Model(inputs=base_model.input, outputs=predictions)
 
 # --- 4. คอมไพล์และฝึกสอนโมเดล ---
-model.compile(optimizer=Adam(learning_rate=1e-3), loss='categorical_crossentropy', metrics=['accuracy'])
+# ใช้ learning rate ที่ต่ำกว่าเพื่อป้องกัน overfitting
+model.compile(optimizer=Adam(learning_rate=5e-4), loss='categorical_crossentropy', metrics=['accuracy'])
 
 # กำหนดเส้นทางสำหรับบันทึกโมเดลที่ดีที่สุด
 best_model_path = os.path.join(RUN_OUTPUT_DIR, 'best_model.h5')
 
-# สร้าง Callbacks
-early_stopping = EarlyStopping(monitor='val_loss', patience=5, verbose=1, mode='min')
+# สร้าง Callbacks - เพิ่ม patience เพื่อให้โมเดลมีเวลาเรียนรู้มากขึ้น
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1, mode='min', restore_best_weights=True)
 model_checkpoint = ModelCheckpoint(best_model_path, monitor='val_accuracy', save_best_only=True, verbose=1, mode='max')
-lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, verbose=1, min_lr=1e-6)
+lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, min_lr=1e-7)
 
 # เริ่มการฝึกสอน
 history = model.fit(
@@ -266,38 +270,10 @@ history = model.fit(
 )
 
 # --- 5. Fine-Tuning ---
-print("\n--- เริ่มกระบวนการ Fine-Tuning ---")
-
-# ปลดล็อกโมเดลพื้นฐาน
-base_model.trainable = True
-
-# ปลดล็อกเฉพาะบางส่วนท้ายๆ ของโมเดล (เช่น 50 layers สุดท้าย)
-# การปลดล็อกทั้งหมดอาจทำให้โมเดลเสียหายได้
-fine_tune_at = 150
-for layer in base_model.layers[:fine_tune_at]:
-    layer.trainable = False
-
-# คอมไพล์โมเดลอีกครั้งด้วย Learning Rate ที่ต่ำมากๆ
-# เพื่อป้องกันไม่ให้ความรู้เดิมของโมเดลถูกทำลาย
-model.compile(optimizer=Adam(learning_rate=1e-5),
-              loss='categorical_crossentropy',
-              metrics=['accuracy'])
-
-# โหลดโมเดลที่ดีที่สุดที่บันทึกไว้กลับมาเพื่อเริ่ม Fine-tuning
-print("\nโหลดโมเดลที่ดีที่สุดกลับมาเพื่อเริ่ม Fine-tuning...")
-model.load_weights(best_model_path)
-
-print(f"ทำการ Fine-tune โมเดล โดยปลดล็อกตั้งแต่ Layer ที่ {fine_tune_at} เป็นต้นไป")
-
-# ฝึกสอนต่อ (Fine-tune)
-total_epochs = INITIAL_EPOCHS + FINE_TUNE_EPOCHS
-history_fine = model.fit(
-    train_generator,
-    epochs=total_epochs,
-    initial_epoch=history.epoch[-1] + 1, # เริ่มต้นฝึกต่อจากรอบที่แล้ว
-    validation_data=validation_data,
-    callbacks=[early_stopping, model_checkpoint, lr_scheduler] # ใช้ Callbacks เดิม
-)
+# ข้ามขั้นตอน Fine-tuning เพราะข้อมูลน้อยเกินไป
+# Fine-tuning จะทำให้ overfitting มากขึ้น
+print("\n--- ข้าม Fine-Tuning เพราะข้อมูลมีจำนวนน้อย ---")
+history_fine = type('obj', (object,), {'history': {'accuracy': [], 'val_accuracy': [], 'loss': [], 'val_loss': []}, 'epoch': []})()
 
 # --- 6. ประเมินผลและแสดงกราฟ ---
 def plot_history(history, history_fine, output_dir):
