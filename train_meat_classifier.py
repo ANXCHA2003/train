@@ -20,7 +20,7 @@ import csv
 
 IMAGE_SIZE = (224, 224)
 
-BATCH_SIZE = 8  # ลดลงเพื่อให้เหมาะกับข้อมูลน้อย
+BATCH_SIZE = 16  # เพิ่มขึ้นเล็กน้อยเพื่อให้การเรียนรู้เสถียรขึ้น
 
 TEST_SPLIT = 0.2 # แบ่งข้อมูลสำหรับ Validation 20%
 
@@ -30,7 +30,7 @@ RANDOM_STATE = 42 # ทำให้การแบ่งข้อมูลเห
 
 DATA_DIR = 'meat database'
 
-INITIAL_EPOCHS = 30  # เพิ่มขึ้นเพราะไม่ทำ fine-tuning
+INITIAL_EPOCHS = 50  # เพิ่มขึ้นเพื่อให้โมเดลมีเวลาเรียนรู้มากขึ้น
 
 FINE_TUNE_EPOCHS = 0  # ปิด fine-tuning เพราะข้อมูลน้อยเกินไป
 
@@ -193,25 +193,18 @@ print("--- การเตรียมข้อมูลเสร็จสิ้
 
 
 # 2.4 สร้าง Data Generator สำหรับ Augmentation (เฉพาะข้อมูล Train)
-# เพิ่ม augmentation มากขึ้นเพื่อชดเชยข้อมูลที่น้อย
+# เพิ่ม augmentation มากขึ้นเพื่อชดเชยข้อมูลที่น้อยและลด overfitting
 train_datagen = ImageDataGenerator(
-
-    rotation_range=30,  # เพิ่มจาก 20
-
-    width_shift_range=0.3,  # เพิ่มจาก 0.2
-
-    height_shift_range=0.3,  # เพิ่มจาก 0.2
-
-    shear_range=0.2,
-
-    zoom_range=0.3,  # เพิ่มจาก 0.2
-
+    rotation_range=40,  # เพิ่มจาก 30
+    width_shift_range=0.4,  # เพิ่มจาก 0.3
+    height_shift_range=0.4,  # เพิ่มจาก 0.3
+    shear_range=0.3,  # เพิ่มจาก 0.2
+    zoom_range=0.4,  # เพิ่มจาก 0.3
     horizontal_flip=True,
-    vertical_flip=True,  # เพิ่มการพลิกแนวตั้ง
-    brightness_range=[0.8, 1.2],  # เพิ่มการปรับความสว่าง
-
+    vertical_flip=True,
+    brightness_range=[0.7, 1.3],  # เพิ่มช่วงความสว่าง
+    channel_shift_range=0.2,  # เพิ่มการปรับสี
     fill_mode='nearest'
-
 )
 
 
@@ -236,12 +229,12 @@ base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(
 # "แช่แข็ง" โมเดลพื้นฐาน ไม่ให้มันเรียนรู้ใหม่ทั้งหมด
 base_model.trainable = False
 
-# สร้างชั้นบนสุดขึ้นมาใหม่ - ทำให้เรียบง่ายเพื่อลด overfitting
+# สร้างชั้นบนสุดขึ้นมาใหม่ - ปรับปรุงเพื่อลด overfitting มากขึ้น
 x = base_model.output
 x = GlobalAveragePooling2D()(x) # ลดขนาดข้อมูล
-x = Dropout(0.5)(x) # เพิ่ม Dropout ก่อน Dense layer
-x = Dense(64, activation='relu')(x)  # ลดจาก 128 เป็น 64
-x = Dropout(0.5)(x) # เพิ่ม Dropout อีกชั้น
+x = Dropout(0.6)(x) # เพิ่ม Dropout rate จาก 0.5 เป็น 0.6
+x = Dense(32, activation='relu')(x)  # ลดขนาดจาก 64 เป็น 32 neurons
+x = Dropout(0.6)(x) # เพิ่ม Dropout อีกชั้น
 # ชั้นสุดท้ายมี num_classes neuron (จำนวนคลาส) และใช้ softmax activation
 # เพื่อให้ผลลัพธ์เป็นความน่าจะเป็นของแต่ละคลาส
 predictions = Dense(num_classes, activation='softmax')(x)
@@ -251,15 +244,15 @@ model = Model(inputs=base_model.input, outputs=predictions)
 
 # --- 4. คอมไพล์และฝึกสอนโมเดล ---
 # ใช้ learning rate ที่ต่ำกว่าเพื่อป้องกัน overfitting
-model.compile(optimizer=Adam(learning_rate=5e-4), loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=Adam(learning_rate=1e-4), loss='categorical_crossentropy', metrics=['accuracy'])
 
 # กำหนดเส้นทางสำหรับบันทึกโมเดลที่ดีที่สุด
 best_model_path = os.path.join(RUN_OUTPUT_DIR, 'best_model.h5')
 
-# สร้าง Callbacks - เพิ่ม patience เพื่อให้โมเดลมีเวลาเรียนรู้มากขึ้น
-early_stopping = EarlyStopping(monitor='val_loss', patience=10, verbose=1, mode='min', restore_best_weights=True)
+# สร้าง Callbacks - ปรับปรุงเพื่อป้องกัน overfitting
+early_stopping = EarlyStopping(monitor='val_accuracy', patience=15, verbose=1, mode='max', restore_best_weights=True)
 model_checkpoint = ModelCheckpoint(best_model_path, monitor='val_accuracy', save_best_only=True, verbose=1, mode='max')
-lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=1, min_lr=1e-7)
+lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=7, verbose=1, min_lr=1e-8)
 
 # เริ่มการฝึกสอน
 history = model.fit(
