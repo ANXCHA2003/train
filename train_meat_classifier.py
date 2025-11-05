@@ -14,8 +14,8 @@ import csv
 # --- 1. กำหนดค่าพื้นฐาน ---
 IMAGE_SIZE = (224, 224)
 BATCH_SIZE = 16 # ลด Batch Size อาจช่วยให้โมเดลเรียนรู้ได้ดีขึ้นบนข้อมูลที่ไม่ใหญ่มาก
-TRAIN_DIR = 'data/train'
-VALID_DIR = 'data/valid'
+TRAIN_DIR = 'meat database/train'
+VALID_DIR = 'meat database/validation'
 INITIAL_EPOCHS = 10
 FINE_TUNE_EPOCHS = 20
 SUMMARY_FILE = 'runs_summary.csv'
