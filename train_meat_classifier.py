@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.preprocessing.image import ImageDataGenerator # pyright: ignore[reportMissingImports]
-from tensorflow.keras.applications import MobileNetV2 # type: ignore
+from tensorflow.keras.applications import EfficientNetB0 # type: ignore
 from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout # type: ignore
 from tensorflow.keras.models import Model # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
@@ -63,7 +63,7 @@ validation_generator = validation_datagen.flow_from_directory(
 # โหลด MobileNetV2 ที่เรียนรู้จากชุดข้อมูล ImageNet มาแล้ว
 # include_top=False คือเราไม่เอาชั้นบนสุด (ชั้นที่ใช้จำแนก 1000 สิ่ง) ออก
 # เราจะสร้างชั้นบนสุดขึ้นมาใหม่เพื่อจำแนกแค่ "ส้ม" กับ "ไม่ใช่ส้ม"
-base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
+base_model = EfficientNetB0(weights='imagenet', include_top=False, input_shape=(224, 224, 3))
 
 # "แช่แข็ง" โมเดลพื้นฐาน ไม่ให้มันเรียนรู้ใหม่ทั้งหมด
 base_model.trainable = False
@@ -115,7 +115,7 @@ base_model.trainable = True
 
 # ปลดล็อกเฉพาะบางส่วนท้ายๆ ของโมเดล (เช่น 50 layers สุดท้าย)
 # การปลดล็อกทั้งหมดอาจทำให้โมเดลเสียหายได้
-fine_tune_at = 100
+fine_tune_at = 150
 for layer in base_model.layers[:fine_tune_at]:
     layer.trainable = False
 
