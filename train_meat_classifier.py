@@ -184,7 +184,7 @@ def plot_history(history, history_fine, output_dir):
     history_image_path = os.path.join(output_dir, 'training_history.png')
     plt.savefig(history_image_path)
     print(f"\nกราฟผลการฝึกสอนถูกบันทึกเป็นไฟล์ '{history_image_path}'")
-    plt.show()
+    # plt.show() # แสดงกราฟแบบ interactive (ถูกปิดใช้งาน)
 
 # --- 7. บันทึกโมเดลที่ฝึกเสร็จแล้ว ---
 def log_run_summary(run_dir, history, history_fine, summary_file):
@@ -215,5 +215,5 @@ def log_run_summary(run_dir, history, history_fine, summary_file):
 
 print("กระบวนการฝึกสอนเสร็จสิ้น")
 print(f"โมเดลที่ดีที่สุดถูกบันทึกในชื่อ '{best_model_path}'")
-plot_history(history, history_fine, RUN_OUTPUT_DIR)
 log_run_summary(RUN_OUTPUT_DIR, history, history_fine, SUMMARY_FILE)
+plot_history(history, history_fine, RUN_OUTPUT_DIR)
