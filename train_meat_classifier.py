@@ -5,59 +5,225 @@ from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Dropout # typ
 from tensorflow.keras.models import Model # type: ignore
 from tensorflow.keras.optimizers import Adam # type: ignore
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau # type: ignore
+from tensorflow.keras.preprocessing.image import load_img, img_to_array # pyright: ignore[reportMissingImports]
+from tensorflow.keras.utils import to_categorical # pyright: ignore[reportMissingImports]
 import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.model_selection import train_test_split
+import glob
 import json
 import os
 from datetime import datetime
 import csv
 
 # --- 1. กำหนดค่าพื้นฐาน ---
+
 IMAGE_SIZE = (224, 224)
-BATCH_SIZE = 16 # ลด Batch Size อาจช่วยให้โมเดลเรียนรู้ได้ดีขึ้นบนข้อมูลที่ไม่ใหญ่มาก
-TRAIN_DIR = 'meat database/train'
-VALID_DIR = 'meat database/validation'
+
+BATCH_SIZE = 16
+
+TEST_SPLIT = 0.2 # แบ่งข้อมูลสำหรับ Validation 20%
+
+RANDOM_STATE = 42 # ทำให้การแบ่งข้อมูลเหมือนเดิมทุกครั้ง
+
+
+
+DATA_DIR = 'meat database'
+
 INITIAL_EPOCHS = 10
+
 FINE_TUNE_EPOCHS = 20
+
 SUMMARY_FILE = 'runs_summary.csv'
 
+
+
 # สร้างโฟลเดอร์สำหรับจัดเก็บผลลัพธ์ของการรันครั้งนี้
+
 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
 RUN_OUTPUT_DIR = os.path.join('runs', timestamp)
+
 os.makedirs(RUN_OUTPUT_DIR, exist_ok=True)
+
 print(f"ผลลัพธ์ของการฝึกสอนครั้งนี้จะถูกเก็บไว้ที่: {RUN_OUTPUT_DIR}")
 
 
-# --- 2. เตรียมข้อมูลรูปภาพ ---
-# สร้างเครื่องมือเพื่ออ่านและแปลงรูปภาพจากโฟลเดอร์
-# rescale=1./255 คือการปรับค่าสีของภาพจาก 0-255 ให้อยู่ในช่วง 0-1 (Normalization)
+
+
+
+# --- 2. เตรียมข้อมูลรูปภาพ (แก้ไขใหม่) ---
+
+print("\n--- เริ่มกระบวนการเตรียมข้อมูล ---")
+
+
+
+# 2.1 ค้นหาไฟล์และสร้าง Labels
+
+print("ค้นหาชื่อคลาสและไฟล์รูปภาพทั้งหมด...")
+
+
+
+# ค้นหาชื่อคลาสจากโฟลเดอร์ย่อยใน 'train' เพื่อความถูกต้อง
+
+class_names = sorted([os.path.basename(d) for d in glob.glob(os.path.join(DATA_DIR, 'train', '*')) if os.path.isdir(d)])
+
+if not class_names:
+
+    raise ValueError(f"ไม่พบคลาสในโฟลเดอร์ {os.path.join(DATA_DIR, 'train')}")
+
+num_classes = len(class_names)
+
+class_to_int = {name: i for i, name in enumerate(class_names)}
+
+int_to_class = {i: name for i, name in enumerate(class_names)}
+
+
+
+print(f"พบคลาสทั้งหมด {num_classes} คลาส: {class_names}")
+
+
+
+# บันทึก Class Labels
+
+class_labels_path = os.path.join(RUN_OUTPUT_DIR, 'class_labels.json')
+
+with open(class_labels_path, 'w') as f:
+
+    json.dump(int_to_class, f)
+
+print(f"บันทึก Class Labels เรียบร้อยแล้ว: {int_to_class}")
+
+
+
+# ค้นหาไฟล์รูปภาพทั้งหมดในทุกโฟลเดอร์ย่อยแบบ Recursive
+
+image_paths = glob.glob(os.path.join(DATA_DIR, '**', '*.jpg'), recursive=True)
+
+if not image_paths:
+
+    raise ValueError(f"ไม่พบไฟล์ .jpg ในโฟลเดอร์ {DATA_DIR}")
+
+
+
+# สร้าง list ของ labels ให้สอดคล้องกับ image_paths ที่ถูกต้องเท่านั้น
+
+labels = []
+
+valid_image_paths = []
+
+for path in image_paths:
+
+    label_name = os.path.basename(os.path.dirname(path))
+
+    if label_name in class_to_int:
+
+        labels.append(class_to_int[label_name])
+
+        valid_image_paths.append(path)
+
+
+
+print(f"พบรูปภาพที่ตรงกับคลาสทั้งหมด {len(valid_image_paths)} รูป")
+
+
+
+# 2.2 แบ่งข้อมูล Train / Validation แบบ Fix
+
+print(f"แบ่งข้อมูล Train/Validation ด้วยอัตราส่วน {1-TEST_SPLIT:.0%}:{TEST_SPLIT:.0%} และ random_state={RANDOM_STATE}")
+
+train_paths, val_paths, train_labels, val_labels = train_test_split(
+
+    valid_image_paths, labels, test_size=TEST_SPLIT, random_state=RANDOM_STATE, shuffle=True, stratify=labels
+
+)
+
+print(f"จำนวนข้อมูล Train: {len(train_paths)}, Validation: {len(val_paths)}")
+
+
+
+# 2.3 โหลดและแปลงรูปภาพเป็น Numpy Arrays
+
+def load_and_preprocess_images(paths, labels, image_size, num_classes):
+
+    images_np = np.zeros((len(paths), *image_size, 3), dtype=np.float32)
+
+    labels_np = np.array(labels, dtype=np.int32)
+
+    
+
+    for i, path in enumerate(paths):
+
+        img = load_img(path, target_size=image_size)
+
+        img_array = img_to_array(img)
+
+        images_np[i] = img_array
+
+        
+
+    # Rescale
+
+    images_np /= 255.0
+
+    
+
+    # Convert labels to one-hot encoding
+
+    labels_np = to_categorical(labels_np, num_classes=num_classes)
+
+    
+
+    return images_np, labels_np
+
+
+
+print("กำลังโหลดและแปลงรูปภาพสำหรับ Training set...")
+
+x_train, y_train = load_and_preprocess_images(train_paths, train_labels, IMAGE_SIZE, num_classes)
+
+print("กำลังโหลดและแปลงรูปภาพสำหรับ Validation set...")
+
+x_val, y_val = load_and_preprocess_images(val_paths, val_labels, IMAGE_SIZE, num_classes)
+
+
+
+print("--- การเตรียมข้อมูลเสร็จสิ้น ---")
+
+
+
+# 2.4 สร้าง Data Generator สำหรับ Augmentation (เฉพาะข้อมูล Train)
+
 train_datagen = ImageDataGenerator(
-    rescale=1./255,
-    rotation_range=25, # เพิ่มความหลากหลายของข้อมูลโดยการหมุนภาพ
+
+    rotation_range=20,
+
     width_shift_range=0.2,
+
     height_shift_range=0.2,
-    brightness_range=[0.7, 1.3],
+
     shear_range=0.2,
-    zoom_range=0.3,
+
+    zoom_range=0.2,
+
     horizontal_flip=True,
+
     fill_mode='nearest'
+
 )
 
-validation_datagen = ImageDataGenerator(rescale=1./255)
 
-# ดึงข้อมูลจากโฟลเดอร์มาเตรียมไว้
-train_generator = train_datagen.flow_from_directory(
-    TRAIN_DIR,
-    target_size=IMAGE_SIZE,
-    batch_size=BATCH_SIZE,
-    class_mode='binary' # 'binary' เพราะมีแค่ 2 คลาส (orange, not_orange)
-)
 
-validation_generator = validation_datagen.flow_from_directory(
-    VALID_DIR,
-    target_size=IMAGE_SIZE,
-    batch_size=BATCH_SIZE,
-    class_mode='binary'
-)
+train_generator = train_datagen.flow(x_train, y_train, batch_size=BATCH_SIZE)
+
+
+
+# Validation data ไม่ต้องมี Generator เพราะเราจะใช้ข้อมูลที่โหลดมาโดยตรง
+
+validation_data = (x_val, y_val)
+
+
+
 
 # --- 3. สร้างโมเดล (Transfer Learning) ---
 # โหลด MobileNetV2 ที่เรียนรู้จากชุดข้อมูล ImageNet มาแล้ว
@@ -73,9 +239,9 @@ x = base_model.output
 x = GlobalAveragePooling2D()(x) # ลดขนาดข้อมูล
 x = Dense(128, activation='relu')(x)
 x = Dropout(0.5)(x) # เพิ่ม Dropout เพื่อช่วยลด Overfitting
-# ชั้นสุดท้ายมี 1 neuron และใช้ sigmoid activation เพื่อให้ผลลัพธ์เป็นค่าระหว่าง 0-1
-# (ค่าใกล้ 1 คือส้ม, ค่าใกล้ 0 คือไม่ใช่ส้ม)
-predictions = Dense(1, activation='sigmoid')(x)
+# ชั้นสุดท้ายมี num_classes neuron (จำนวนคลาส) และใช้ softmax activation
+# เพื่อให้ผลลัพธ์เป็นความน่าจะเป็นของแต่ละคลาส
+predictions = Dense(num_classes, activation='softmax')(x)
 
 # รวมโมเดลเก่ากับชั้นใหม่เข้าด้วยกัน
 model = Model(inputs=base_model.input, outputs=predictions)
@@ -89,7 +255,7 @@ with open(class_labels_path, 'w') as f:
 print(f"บันทึก Class Labels เรียบร้อยแล้ว: {labels}")
 
 # --- 4. คอมไพล์และฝึกสอนโมเดล ---
-model.compile(optimizer=Adam(learning_rate=1e-3), loss='binary_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=Adam(learning_rate=1e-3), loss='categorical_crossentropy', metrics=['accuracy'])
 
 # กำหนดเส้นทางสำหรับบันทึกโมเดลที่ดีที่สุด
 best_model_path = os.path.join(RUN_OUTPUT_DIR, 'best_model.h5')
@@ -103,7 +269,7 @@ lr_scheduler = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, ver
 history = model.fit(
     train_generator,
     epochs=INITIAL_EPOCHS,
-    validation_data=validation_generator,
+    validation_data=validation_data,
     callbacks=[early_stopping, model_checkpoint, lr_scheduler]
 )
 
@@ -122,7 +288,7 @@ for layer in base_model.layers[:fine_tune_at]:
 # คอมไพล์โมเดลอีกครั้งด้วย Learning Rate ที่ต่ำมากๆ
 # เพื่อป้องกันไม่ให้ความรู้เดิมของโมเดลถูกทำลาย
 model.compile(optimizer=Adam(learning_rate=1e-5),
-              loss='binary_crossentropy',
+              loss='categorical_crossentropy',
               metrics=['accuracy'])
 
 # โหลดโมเดลที่ดีที่สุดที่บันทึกไว้กลับมาเพื่อเริ่ม Fine-tuning
@@ -137,7 +303,7 @@ history_fine = model.fit(
     train_generator,
     epochs=total_epochs,
     initial_epoch=history.epoch[-1] + 1, # เริ่มต้นฝึกต่อจากรอบที่แล้ว
-    validation_data=validation_generator,
+    validation_data=validation_data,
     callbacks=[early_stopping, model_checkpoint, lr_scheduler] # ใช้ Callbacks เดิม
 )
 
